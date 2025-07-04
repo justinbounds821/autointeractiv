@@ -1,0 +1,222 @@
+{
+  "name": "Magic Hub - No Show Management Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "no-show-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "01-webhook-no-show",
+      "name": "Webhook - No Show",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "no show",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "absent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "02-filter-no-show",
+      "name": "Filter No Show",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "{\"body\": \"Am văzut că nu ai ajuns 😔 Te reprogramăm cu prioritate?\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03-whatsapp-no-show",
+      "name": "WhatsApp No Show",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [580, 250]
+    },
+    {
+      "parameters": {
+        "accountSid": "={{ $credentials.twilio.accountSid }}",
+        "authToken": "={{ $credentials.twilio.authToken }}",
+        "fromPhoneNumber": "+[YOUR_TWILIO_NUMBER]",
+        "toPhoneNumber": "={{ $json.phone }}",
+        "message": "Am văzut că nu ai ajuns. Te reprogramăm cu prioritate? Răspunde cu DA/NU"
+      },
+      "id": "04-sms-fallback-no-show",
+      "name": "SMS Fallback - No Show",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [580, 350]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "No_Show",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.firstname }} {{ $json.lastname }}",
+            "phone": "={{ $json.phone }}",
+            "booking_date": "={{ $json.date }}",
+            "booking_time": "={{ $json.time }}",
+            "location": "={{ $json.location }}",
+            "whatsapp_sent": "=true",
+            "sms_sent": "=true",
+            "timestamp": "={{ new Date().toISOString() }}",
+            "follow_up_needed": "=true"
+          }
+        },
+        "options": {}
+      },
+      "id": "05-log-no-show",
+      "name": "Log No Show",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"No show messages sent\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "06-response-node",
+      "name": "Response Node",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - No Show": {
+      "main": [
+        [
+          {
+            "node": "Filter No Show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter No Show": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp No Show",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SMS Fallback - No Show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp No Show": {
+      "main": [
+        [
+          {
+            "node": "Log No Show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS Fallback - No Show": {
+      "main": [
+        [
+          {
+            "node": "Log No Show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log No Show": {
+      "main": [
+        [
+          {
+            "node": "Response Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["no-show", "recovery", "sms"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

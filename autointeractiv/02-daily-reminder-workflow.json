@@ -1,0 +1,208 @@
+{
+  "name": "Magic Hub - Daily Reminder Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "01-cron-daily-reminders",
+      "name": "Cron - Daily Reminders",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Booking_Confirmations",
+        "options": {}
+      },
+      "id": "02-read-bookings",
+      "name": "Read Bookings",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const today = new Date();\nconst tomorrow = new Date(today);\ntomorrow.setDate(today.getDate() + 1);\nconst tomorrowDate = tomorrow.toISOString().split('T')[0];\n\nconst filteredBookings = items.filter(item => {\n  const bookingDate = new Date(item.json.booking_date).toISOString().split('T')[0];\n  return bookingDate === tomorrowDate;\n});\n\nreturn filteredBookings;"
+      },
+      "id": "03-filter-tomorrow-bookings",
+      "name": "Filter Tomorrow Bookings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "{\"body\": \"Reminder: Mâine la {{ $json.booking_time }} ai programare la Magic Hub – locația {{ $json.location }}.\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "04-whatsapp-reminder",
+      "name": "WhatsApp Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 250]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@magichub.ro",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Reminder - Programare Magic Hub mâine",
+        "emailFormat": "html",
+        "message": "<!DOCTYPE html><html><body><h2>Reminder!</h2><p>Mâine la {{ $json.booking_time }} ai programare la Magic Hub – locația {{ $json.location }}.</p><p>Te așteptăm!</p></body></html>"
+      },
+      "id": "05-email-reminder",
+      "name": "Email Reminder",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [780, 350]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Reminders_Sent",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.name }}",
+            "phone": "={{ $json.phone }}",
+            "email": "={{ $json.email }}",
+            "booking_date": "={{ $json.booking_date }}",
+            "booking_time": "={{ $json.booking_time }}",
+            "location": "={{ $json.location }}",
+            "whatsapp_sent": "=true",
+            "email_sent": "=true",
+            "timestamp": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "06-log-reminders",
+      "name": "Log Reminders",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Cron - Daily Reminders": {
+      "main": [
+        [
+          {
+            "node": "Read Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Bookings": {
+      "main": [
+        [
+          {
+            "node": "Filter Tomorrow Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Tomorrow Bookings": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Reminder",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["reminder", "daily", "cron"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,149 @@
+{
+  "workflows": [
+    {
+      "name": "Magic Hub - Booking Confirmation Workflow",
+      "description": "Handles new booking confirmations via WhatsApp and Email",
+      "triggerWebhook": "magic-hub-booking-upload",
+      "tags": ["booking", "confirmation"],
+      "active": true
+    },
+    {
+      "name": "Magic Hub - Daily Reminder Workflow", 
+      "description": "Sends daily reminders for tomorrow's appointments",
+      "triggerCron": "0 9 * * *",
+      "tags": ["reminder", "daily", "cron"],
+      "active": true
+    },
+    {
+      "name": "Magic Hub - AI Interactive Messages Workflow",
+      "description": "Processes WhatsApp messages with AI and sends personalized responses",
+      "triggerWebhook": "whatsapp-webhook",
+      "tags": ["ai", "whatsapp", "interactive"],
+      "active": true
+    },
+    {
+      "name": "Magic Hub - Follow-up & Review Request Workflow",
+      "description": "Automatically requests reviews from completed appointments",
+      "triggerCron": "0 */2 * * *",
+      "tags": ["followup", "review", "cron"],
+      "active": true
+    },
+    {
+      "name": "Magic Hub - No Show Management Workflow",
+      "description": "Handles no-show clients with recovery messages",
+      "triggerWebhook": "no-show-webhook",
+      "tags": ["no-show", "recovery", "sms"],
+      "active": true
+    },
+    {
+      "name": "Magic Hub - Negative Feedback Management Workflow",
+      "description": "Processes negative feedback and generates AI recovery messages",
+      "triggerWebhook": "feedback-upload",
+      "tags": ["feedback", "negative", "ai", "repair"],
+      "active": true
+    },
+    {
+      "name": "Magic Hub - Google Review Management Workflow",
+      "description": "Automatically responds to Google reviews with AI-generated replies",
+      "triggerWebhook": "google-review-webhook", 
+      "tags": ["google", "review", "ai", "management"],
+      "active": true
+    }
+  ],
+  "global_settings": {
+    "timezone": "Europe/Bucharest",
+    "errorHandling": "continue",
+    "retryOnFail": true,
+    "maxRetries": 3,
+    "retryInterval": 300
+  },
+  "shared_credentials": {
+    "whatsapp360dialog": {
+      "type": "whatsapp360dialog",
+      "name": "WhatsApp Business API"
+    },
+    "googleSheets": {
+      "type": "googleSheetsOAuth2",
+      "name": "Magic Hub Google Sheets"
+    },
+    "gmail": {
+      "type": "gmailOAuth2", 
+      "name": "Magic Hub Gmail"
+    },
+    "openAi": {
+      "type": "openAi",
+      "name": "OpenAI GPT-4"
+    },
+    "twilio": {
+      "type": "twilio",
+      "name": "Twilio SMS"
+    },
+    "googleBusiness": {
+      "type": "googleBusiness",
+      "name": "Google Business Profile"
+    }
+  },
+  "shared_variables": {
+    "businessName": "Magic Hub",
+    "businessEmail": "noreply@magichub.ro",
+    "managerEmail": "manager@magichub.ro",
+    "googleMapsLink": "[GOOGLE_MAPS_LINK]",
+    "twilioNumber": "+[YOUR_TWILIO_NUMBER]"
+  },
+  "deployment_notes": [
+    "1. Import all 7 individual workflow files into n8n",
+    "2. Configure shared credentials for all services",
+    "3. Update webhook URLs after deployment",
+    "4. Set up Google Sheets with required tabs:",
+    "   - Booking_Confirmations",
+    "   - Reminders_Sent", 
+    "   - Interactiv_AI",
+    "   - Recenzii_Trimise",
+    "   - No_Show",
+    "   - Feedback_Repair",
+    "   - Google_Reviews_Processed",
+    "5. Test each workflow individually before activating",
+    "6. Configure cron schedules according to business hours",
+    "7. Set up monitoring and logging for production use"
+  ],
+  "integration_points": [
+    {
+      "workflow": "Booking Confirmation",
+      "connects_to": "External booking system",
+      "data_flow": "Booking data → Confirmation messages → Google Sheets logging"
+    },
+    {
+      "workflow": "Daily Reminders", 
+      "connects_to": "Google Sheets",
+      "data_flow": "Read bookings → Filter tomorrow → Send reminders → Log"
+    },
+    {
+      "workflow": "AI Interactive",
+      "connects_to": "WhatsApp Business API",
+      "data_flow": "Incoming messages → AI analysis → Response generation → Logging"
+    },
+    {
+      "workflow": "Follow-up Reviews",
+      "connects_to": "Google Sheets + Review platforms", 
+      "data_flow": "Completed bookings → Review requests → Tracking"
+    },
+    {
+      "workflow": "No-Show Management",
+      "connects_to": "WhatsApp + SMS",
+      "data_flow": "No-show status → Recovery messages → Follow-up tracking"
+    },
+    {
+      "workflow": "Negative Feedback",
+      "connects_to": "AI + Manager notifications",
+      "data_flow": "Feedback input → AI analysis → Manager alert → Recovery planning"
+    },
+    {
+      "workflow": "Google Reviews",
+      "connects_to": "Google Business Profile API",
+      "data_flow": "New reviews → AI response → Auto-reply or manager approval"
+    }
+  ],
+  "version": "1.0.0",
+  "created": "2024-01-01T00:00:00.000Z",
+  "updated": "2024-01-01T00:00:00.000Z"
+}
