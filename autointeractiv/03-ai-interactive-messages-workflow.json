@@ -1,0 +1,173 @@
+{
+  "name": "Magic Hub - AI Interactive Messages Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "whatsapp-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "01-webhook-whatsapp",
+      "name": "Webhook - WhatsApp Messages",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "Analyze this WhatsApp message and extract: location (if mentioned), service (if mentioned), and generate a personalized response. Message: {{ $json.text }}. Client name: {{ $json.name }}. Return JSON format: {\"location\": \"\", \"service\": \"\", \"response\": \"\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "02-ai-message-analysis",
+      "name": "AI Message Analysis",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "{\"body\": \"{{ JSON.parse($json.response).response }}\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03-ai-whatsapp-response",
+      "name": "AI WhatsApp Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Interactiv_AI",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.name }}",
+            "phone": "={{ $json.phone }}",
+            "message": "={{ $json.text }}",
+            "ai_location": "={{ JSON.parse($json.response).location }}",
+            "ai_service": "={{ JSON.parse($json.response).service }}",
+            "ai_response": "={{ JSON.parse($json.response).response }}",
+            "timestamp": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "04-log-ai-interactions",
+      "name": "Log AI Interactions",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"AI response sent\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "05-response-node",
+      "name": "Response Node",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - WhatsApp Messages": {
+      "main": [
+        [
+          {
+            "node": "AI Message Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Message Analysis": {
+      "main": [
+        [
+          {
+            "node": "AI WhatsApp Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI WhatsApp Response": {
+      "main": [
+        [
+          {
+            "node": "Log AI Interactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Interactions": {
+      "main": [
+        [
+          {
+            "node": "Response Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["ai", "whatsapp", "interactive"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

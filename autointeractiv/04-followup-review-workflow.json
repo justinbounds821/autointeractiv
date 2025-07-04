@@ -1,0 +1,206 @@
+{
+  "name": "Magic Hub - Follow-up & Review Request Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "01-cron-followup",
+      "name": "Cron - Follow-up Check",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Booking_Confirmations",
+        "options": {}
+      },
+      "id": "02-read-completed-bookings",
+      "name": "Read Completed Bookings",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);\n\nconst filteredBookings = items.filter(item => {\n  const bookingDateTime = new Date(`${item.json.booking_date}T${item.json.booking_time}`);\n  return (\n    (item.json.status === 'completed' || item.json.status === 'prezent') &&\n    bookingDateTime <= twoHoursAgo &&\n    !item.json.followup_sent\n  );\n});\n\nreturn filteredBookings;"
+      },
+      "id": "03-filter-followup-needed",
+      "name": "Filter Follow-up Needed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "{\"body\": \"Ne bucurăm că ai venit! Ne lași un review? https://g.page/r/[GOOGLE_MAPS_LINK]/review\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "04-whatsapp-review-request",
+      "name": "WhatsApp Review Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 250]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@magichub.ro",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Mulțumim pentru vizită - Magic Hub",
+        "emailFormat": "html",
+        "message": "<!DOCTYPE html><html><body><h2>Mulțumim!</h2><p>Ne bucurăm că ai venit la Magic Hub!</p><p>Ne-ar face plăcere să ne lași un review:</p><a href=\"https://g.page/r/[GOOGLE_MAPS_LINK]/review\" target=\"_blank\">Lasă un review aici</a></body></html>"
+      },
+      "id": "05-email-review-request",
+      "name": "Email Review Request",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [780, 350]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Recenzii_Trimise",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.name }}",
+            "phone": "={{ $json.phone }}",
+            "email": "={{ $json.email }}",
+            "whatsapp_sent": "=true",
+            "email_sent": "=true",
+            "timestamp": "={{ new Date().toISOString() }}",
+            "booking_date": "={{ $json.booking_date }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "06-log-review-requests",
+      "name": "Log Review Requests",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Cron - Follow-up Check": {
+      "main": [
+        [
+          {
+            "node": "Read Completed Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Completed Bookings": {
+      "main": [
+        [
+          {
+            "node": "Filter Follow-up Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Follow-up Needed": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Review Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Review Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Review Request": {
+      "main": [
+        [
+          {
+            "node": "Log Review Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Review Request": {
+      "main": [
+        [
+          {
+            "node": "Log Review Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["followup", "review", "cron"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

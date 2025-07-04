@@ -1,0 +1,186 @@
+{
+  "name": "Magic Hub - Negative Feedback Management Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "feedback-upload",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "01-webhook-feedback-upload",
+      "name": "Webhook - Feedback Upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ parseInt($json.rating) }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "02-filter-negative-feedback",
+      "name": "Filter Negative Feedback",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "Generate a personalized reconnection message for a client who left negative feedback. Client: {{ $json.client_name }}, Rating: {{ $json.rating }}, Feedback: {{ $json.feedback }}. Create a sincere, professional message to rebuild trust."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03-ai-reconnection-message",
+      "name": "AI Reconnection Message",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@magichub.ro",
+        "toEmail": "manager@magichub.ro",
+        "subject": "Feedback Negativ - Acțiune Necesară",
+        "emailFormat": "html",
+        "message": "<!DOCTYPE html><html><body><h2>Feedback Negativ Detectat</h2><p><strong>Client:</strong> {{ $json.client_name }}</p><p><strong>Rating:</strong> {{ $json.rating }}/5</p><p><strong>Feedback:</strong> {{ $json.feedback }}</p><h3>Mesaj Generat AI:</h3><p>{{ $json.ai_message }}</p></body></html>"
+      },
+      "id": "04-email-manager-negative",
+      "name": "Email Manager - Negative",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [780, 250]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Feedback_Repair",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "client_name": "={{ $json.client_name }}",
+            "rating": "={{ $json.rating }}",
+            "feedback": "={{ $json.feedback }}",
+            "ai_message": "={{ $json.ai_message }}",
+            "manager_notified": "=true",
+            "timestamp": "={{ new Date().toISOString() }}",
+            "status": "pending_action"
+          }
+        },
+        "options": {}
+      },
+      "id": "05-log-negative-feedback",
+      "name": "Log Negative Feedback",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [780, 350]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"Negative feedback processed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "06-response-node",
+      "name": "Response Node",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Feedback Upload": {
+      "main": [
+        [
+          {
+            "node": "Filter Negative Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Negative Feedback": {
+      "main": [
+        [
+          {
+            "node": "AI Reconnection Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Reconnection Message": {
+      "main": [
+        [
+          {
+            "node": "Email Manager - Negative",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Negative Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Manager - Negative": {
+      "main": [
+        [
+          {
+            "node": "Response Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Negative Feedback": {
+      "main": [
+        [
+          {
+            "node": "Response Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["feedback", "negative", "ai", "repair"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

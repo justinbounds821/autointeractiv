@@ -1,0 +1,293 @@
+{
+  "name": "Magic Hub - Google Review Management Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "google-review-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "01-webhook-google-review",
+      "name": "Webhook - Google Review",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ parseInt($json.rating) }}",
+              "rightValue": 4,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        }
+      },
+      "id": "02-switch-review-rating",
+      "name": "Switch Review Rating",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "Generate a professional, warm thank you response to this positive Google review. Keep it under 150 characters. Review: {{ $json.review_text }}, Rating: {{ $json.rating }}/5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03-ai-positive-review-response",
+      "name": "AI Positive Review Response",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [580, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://mybusiness.googleapis.com/v4/accounts/{{ $credentials.googleBusiness.accountId }}/locations/{{ $json.location_id }}/reviews/{{ $json.review_id }}/reply",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.googleBusiness.accessToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "comment",
+              "value": "={{ $json.ai_response }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "04-post-auto-reply",
+      "name": "Post Auto Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 200]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "Generate a professional response draft for this negative Google review. Make it apologetic, solution-oriented, and invite private conversation. Review: {{ $json.review_text }}, Rating: {{ $json.rating }}/5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "05-ai-negative-review-draft",
+      "name": "AI Negative Review Draft",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [580, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "{{ $credentials.manager.whatsappNumber }}"
+            },
+            {
+              "name": "type",
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": "{\"body\": \"🚨 Review Negativ Google!\n\nRating: {{ $json.rating }}/5\nReview: {{ $json.review_text }}\n\nDraft răspuns AI:\n{{ $json.ai_draft }}\n\nAprobi? Răspunde DA/NU\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "06-manager-approval-request",
+      "name": "Manager Approval Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": "Google_Reviews_Processed",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "review_id": "={{ $json.review_id }}",
+            "rating": "={{ $json.rating }}",
+            "review_text": "={{ $json.review_text }}",
+            "response_type": "={{ $json.rating >= 4 ? 'auto_positive' : 'manual_negative' }}",
+            "ai_response": "={{ $json.ai_response || $json.ai_draft }}",
+            "auto_replied": "={{ $json.rating >= 4 ? 'true' : 'false' }}",
+            "manager_approval": "={{ $json.rating >= 4 ? 'not_required' : 'pending' }}",
+            "timestamp": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "07-log-review-processing",
+      "name": "Log Review Processing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [980, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"Review processed\",\n  \"auto_replied\": \"{{ $json.rating >= 4 ? 'true' : 'false' }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "08-response-node",
+      "name": "Response Node",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1180, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Google Review": {
+      "main": [
+        [
+          {
+            "node": "Switch Review Rating",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Review Rating": {
+      "main": [
+        [
+          {
+            "node": "AI Positive Review Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Negative Review Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Positive Review Response": {
+      "main": [
+        [
+          {
+            "node": "Post Auto Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Auto Reply": {
+      "main": [
+        [
+          {
+            "node": "Log Review Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Negative Review Draft": {
+      "main": [
+        [
+          {
+            "node": "Manager Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manager Approval Request": {
+      "main": [
+        [
+          {
+            "node": "Log Review Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Review Processing": {
+      "main": [
+        [
+          {
+            "node": "Response Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["google", "review", "ai", "management"],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1.0.0"
+}
