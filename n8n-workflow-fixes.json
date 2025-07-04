@@ -1,0 +1,75 @@
+{
+  "title": "🚨 Magic Hub N8N Critical Fixes - EROARE #2",
+  "description": "Fixed configurations pentru problemele critice identificate",
+  "timestamp": "2024-01-15T00:00:00.000Z",
+  
+  "critical_fixes": {
+    "fix_1_whatsapp_auth": {
+      "issue": "WhatsApp 360Dialog authentication failure",
+      "severity": "CRITICAL",
+      "impact": "100% WhatsApp messages fail to send",
+      "current_wrong_config": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth"
+      },
+      "fixed_config": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      }
+    },
+    
+    "fix_2_payload_format": {
+      "issue": "WhatsApp message payload JSON string instead of object",
+      "severity": "HIGH", 
+      "impact": "Malformed messages, API rejections",
+      "current_wrong_config": {
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "{\"body\": \"Salut {{ $json.firstname }}!...\"}"
+            }
+          ]
+        }
+      },
+      "fixed_config": {
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Salut {{ $json.firstname }}! Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}. Confirmi cu 1️⃣ Da / 2️⃣ Reprogramez?\"\n  }\n}"
+      }
+    },
+    
+    "fix_3_error_handling": {
+      "issue": "No error handling în workflows",
+      "severity": "HIGH",
+      "impact": "Silent failures, no debugging info",
+      "solution": "Add error handling after each HTTP request"
+    }
+  },
+  
+  "quick_fix_script": {
+    "instructions": "Rulează acest script în N8N pentru quick fixes",
+    "steps": [
+      "1. Deschide workflow în N8N editor",
+      "2. Click pe WhatsApp node",
+      "3. Change Authentication la 'None'", 
+      "4. Add headers manual: D360-API-KEY cu value din credentials",
+      "5. Change body la JSON format direct",
+      "6. Add error handling node după WhatsApp",
+      "7. Test cu date reale"
+    ]
+  }
+} 

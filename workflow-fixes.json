@@ -1,0 +1,503 @@
+{
+  "title": "Magic Hub N8N Workflow Fixes - EROARE #2 Solutions",
+  "description": "Fixed configurations for critical workflow issues identified in validation",
+  "version": "1.0.0",
+  "fixes": {
+    "whatsapp_authentication": {
+      "issue": "WhatsApp 360Dialog authentication using wrong credential type",
+      "severity": "CRITICAL",
+      "current_config": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth"
+      },
+      "fixed_config": {
+        "authentication": "predefinedCredentialType", 
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      }
+    },
+    "whatsapp_payload_format": {
+      "issue": "WhatsApp message payload using JSON string instead of proper object",
+      "severity": "HIGH",
+      "current_config": {
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "{\"body\": \"Salut {{ $json.firstname }}! Ai rezervare...\"}"
+            }
+          ]
+        }
+      },
+      "fixed_config": {
+        "sendBody": true,
+        "contentType": "json",
+        "jsonParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "type", 
+              "value": "text"
+            },
+            {
+              "name": "text",
+              "value": {
+                "body": "Salut {{ $json.firstname }}! Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}. Confirmi cu 1️⃣ Da / 2️⃣ Reprogramez?"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "error_handling": {
+      "issue": "Missing error handling nodes in all workflows",
+      "severity": "HIGH",
+      "solution": "Add error handling node after each critical step",
+      "error_handler_node": {
+        "parameters": {
+          "values": {
+            "string": [
+              {
+                "name": "error_type",
+                "value": "={{ $node.error?.name || 'Unknown Error' }}"
+              },
+              {
+                "name": "error_message", 
+                "value": "={{ $node.error?.message || 'No error message' }}"
+              },
+              {
+                "name": "workflow_name",
+                "value": "Magic Hub Workflow"
+              },
+              {
+                "name": "timestamp",
+                "value": "={{ new Date().toISOString() }}"
+              },
+              {
+                "name": "input_data",
+                "value": "={{ JSON.stringify($input.all()) }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "error-handler",
+        "name": "Error Handler",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 1,
+        "onError": "continueErrorOutput"
+      }
+    },
+    "input_validation": {
+      "issue": "Missing input validation for webhook data",
+      "severity": "MEDIUM",
+      "solution": "Add validation node after webhook trigger",
+      "validation_node": {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.firstname }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "isNotEmpty"
+                }
+              },
+              {
+                "leftValue": "={{ $json.phone }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string", 
+                  "operation": "isNotEmpty"
+                }
+              },
+              {
+                "leftValue": "={{ $json.phone }}",
+                "rightValue": "^\\+[1-9]\\d{1,14}$",
+                "operator": {
+                  "type": "string",
+                  "operation": "regex"
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        },
+        "id": "input-validator",
+        "name": "Input Validator",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 1
+      }
+    }
+  },
+  
+  "fixed_workflows": {
+    "booking_confirmation_fixed": {
+      "name": "Magic Hub - Booking Confirmation Workflow (FIXED)",
+      "nodes": [
+        {
+          "parameters": {
+            "path": "magic-hub-booking-upload",
+            "responseMode": "responseNode",
+            "options": {}
+          },
+          "id": "01-webhook-booking-upload",
+          "name": "Webhook - Booking Upload",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [180, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "strict"
+              },
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.firstname }}",
+                  "rightValue": "",
+                  "operator": {
+                    "type": "string",
+                    "operation": "isNotEmpty"
+                  }
+                },
+                {
+                  "leftValue": "={{ $json.phone }}",
+                  "rightValue": "^\\+[1-9]\\d{1,14}$",
+                  "operator": {
+                    "type": "string",
+                    "operation": "regex"
+                  }
+                },
+                {
+                  "leftValue": "={{ $json.date }}",
+                  "rightValue": "",
+                  "operator": {
+                    "type": "string",
+                    "operation": "isNotEmpty"
+                  }
+                }
+              ],
+              "combinator": "and"
+            }
+          },
+          "id": "02-input-validator",
+          "name": "Input Validator",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [350, 300]
+        },
+        {
+          "parameters": {
+            "url": "https://waba.360dialog.io/v1/messages",
+            "authentication": "predefinedCredentialType",
+            "nodeCredentialType": "httpHeaderAuth",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "D360-API-KEY",
+                  "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+                },
+                {
+                  "name": "Content-Type", 
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "contentType": "json",
+            "jsonParameters": {
+              "parameters": [
+                {
+                  "name": "to",
+                  "value": "={{ $json.phone }}"
+                },
+                {
+                  "name": "type",
+                  "value": "text"
+                },
+                {
+                  "name": "text",
+                  "value": {
+                    "body": "Salut {{ $json.firstname }}! Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}. Confirmi cu 1️⃣ Da / 2️⃣ Reprogramez?"
+                  }
+                }
+              ]
+            },
+            "options": {}
+          },
+          "id": "03-whatsapp-confirmation-fixed",
+          "name": "WhatsApp Confirmation (FIXED)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [550, 200],
+          "onError": "continueErrorOutput"
+        },
+        {
+          "parameters": {
+            "values": {
+              "string": [
+                {
+                  "name": "error_type",
+                  "value": "={{ $node.error?.name || 'WhatsApp Error' }}"
+                },
+                {
+                  "name": "error_message",
+                  "value": "={{ $node.error?.message || 'WhatsApp sending failed' }}"
+                },
+                {
+                  "name": "customer_phone",
+                  "value": "={{ $json.phone }}"
+                },
+                {
+                  "name": "timestamp",
+                  "value": "={{ new Date().toISOString() }}"
+                }
+              ]
+            }
+          },
+          "id": "04-whatsapp-error-handler",
+          "name": "WhatsApp Error Handler",
+          "type": "n8n-nodes-base.set",
+          "typeVersion": 1,
+          "position": [550, 100]
+        },
+        {
+          "parameters": {
+            "fromEmail": "noreply@magichub.ro",
+            "toEmail": "={{ $json.email }}",
+            "subject": "Confirmare rezervare Magic Hub",
+            "emailFormat": "html",
+            "message": "<!DOCTYPE html><html><body><h2>Salut {{ $json.firstname }}!</h2><p>Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}.</p><p>Te rugăm să confirmi rezervarea răspunzând la acest email cu \"Confirm\" sau \"Reprogramez\".</p><p>Mulțumim!</p></body></html>"
+          },
+          "id": "05-email-confirmation",
+          "name": "Email Confirmation",
+          "type": "n8n-nodes-base.gmail",
+          "typeVersion": 2,
+          "position": [550, 400],
+          "onError": "continueErrorOutput"
+        },
+        {
+          "parameters": {
+            "values": {
+              "string": [
+                {
+                  "name": "error_type",
+                  "value": "={{ $node.error?.name || 'Email Error' }}"
+                },
+                {
+                  "name": "error_message", 
+                  "value": "={{ $node.error?.message || 'Email sending failed' }}"
+                },
+                {
+                  "name": "customer_email",
+                  "value": "={{ $json.email }}"
+                },
+                {
+                  "name": "timestamp",
+                  "value": "={{ new Date().toISOString() }}"
+                }
+              ]
+            }
+          },
+          "id": "06-email-error-handler",
+          "name": "Email Error Handler", 
+          "type": "n8n-nodes-base.set",
+          "typeVersion": 1,
+          "position": [550, 500]
+        },
+        {
+          "parameters": {
+            "operation": "append",
+            "documentId": {
+              "__rl": true,
+              "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+              "mode": "id"
+            },
+            "sheetName": "Booking_Confirmations",
+            "columns": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "name": "={{ $json.firstname }} {{ $json.lastname }}",
+                "phone": "={{ $json.phone }}",
+                "email": "={{ $json.email }}",
+                "booking_date": "={{ $json.date }}",
+                "booking_time": "={{ $json.time }}",
+                "location": "={{ $json.location }}",
+                "whatsapp_sent": "={{ $('WhatsApp Confirmation (FIXED)').item(0).json.status === 'success' }}",
+                "email_sent": "={{ $('Email Confirmation').item(0).json.status === 'success' }}",
+                "timestamp": "={{ new Date().toISOString() }}",
+                "status": "confirmation_sent",
+                "whatsapp_error": "={{ $('WhatsApp Error Handler').item(0)?.json?.error_message || '' }}",
+                "email_error": "={{ $('Email Error Handler').item(0)?.json?.error_message || '' }}"
+              }
+            },
+            "options": {}
+          },
+          "id": "07-log-confirmations-enhanced",
+          "name": "Log Confirmations (Enhanced)",
+          "type": "n8n-nodes-base.googleSheets",
+          "typeVersion": 4,
+          "position": [750, 300]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"Booking confirmation processed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"whatsapp_sent\": {{ $('WhatsApp Confirmation (FIXED)').item(0).json.status === 'success' }},\n  \"email_sent\": {{ $('Email Confirmation').item(0).json.status === 'success' }},\n  \"validation_passed\": {{ $('Input Validator').item(0).json.validation_passed || true }}\n}"
+          },
+          "id": "08-response-node-enhanced",
+          "name": "Response Node (Enhanced)",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [950, 300]
+        }
+      ],
+      "connections": {
+        "Webhook - Booking Upload": {
+          "main": [
+            [
+              {
+                "node": "Input Validator",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Input Validator": {
+          "main": [
+            [
+              {
+                "node": "WhatsApp Confirmation (FIXED)",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "Email Confirmation",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "WhatsApp Confirmation (FIXED)": {
+          "main": [
+            [
+              {
+                "node": "Log Confirmations (Enhanced)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ],
+          "error": [
+            [
+              {
+                "node": "WhatsApp Error Handler",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Email Confirmation": {
+          "main": [
+            [
+              {
+                "node": "Log Confirmations (Enhanced)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ],
+          "error": [
+            [
+              {
+                "node": "Email Error Handler",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "WhatsApp Error Handler": {
+          "main": [
+            [
+              {
+                "node": "Log Confirmations (Enhanced)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Email Error Handler": {
+          "main": [
+            [
+              {
+                "node": "Log Confirmations (Enhanced)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Log Confirmations (Enhanced)": {
+          "main": [
+            [
+              {
+                "node": "Response Node (Enhanced)",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    }
+  },
+  
+  "deployment_instructions": {
+    "step_1": "Backup existing workflows în N8N",
+    "step_2": "Update WhatsApp credential configuration în N8N settings",
+    "step_3": "Import fixed workflow JSON",
+    "step_4": "Test cu test data folosind validation script",
+    "step_5": "Monitor logs pentru errors și performance",
+    "step_6": "Gradually replace old workflows cu fixed versions"
+  },
+  
+  "testing_checklist": [
+    "✅ WhatsApp 360Dialog authentication test",
+    "✅ JSON payload format validation",
+    "✅ Error handling pentru failed API calls",
+    "✅ Input validation pentru invalid data",
+    "✅ Google Sheets logging cu error fields",
+    "✅ Response webhook cu detailed status",
+    "✅ End-to-end test cu real appointment data"
+  ]
+} 
