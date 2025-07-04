@@ -1,0 +1,105 @@
+Generează un workflow complet în format JSON compatibil cu platforma n8n v0.229+ (sau versiuni mai noi), destinat automatizării relației cu clienții pentru salonul Magic Hub. Scopul este reducerea apelurilor manuale și introducerea unei comunicări proactive și interactive, bazate pe date reale din sistemul de rezervări Fresha, fișiere `.xlsx`, și platformele WhatsApp, Gmail și Google Business.
+
+🔁 GENERAL:
+- Nume client, telefon, dată, oră, locație, status rezervare → vin din exporturi Fresha (.xlsx)
+- Acțiunile sunt distribuite prin WhatsApp API (360dialog), Gmail API, și Google Sheets/Drive pentru statusuri și backup
+
+---
+
+🟢 1. Confirmare rezervare (automat, după încărcare fișier)
+- Trigger: Upload `.xlsx` (detectează în folder Google Drive / sau webhook / drag-and-drop)
+- Detectează doar rândurile cu status = „new” sau „pending”
+- Trimitere mesaj:
+  - WhatsApp (360dialog): „Salut [Prenume]! Ai rezervare la Magic Hub [Locație] pe [Data] la [Ora]. Confirmi cu 1️⃣ Da / 2️⃣ Reprogramez?”
+  - Email (Gmail API): mesaj similar
+- Log salvat în Google Sheets: nume, data rezervare, mesaj trimis, răspuns client (dacă e webhook 360dialog)
+
+---
+
+⏰ 2. Reminder 24h înainte
+- Trigger: cron job la ora 09:00 zilnic
+- Caută rezervările din Google Sheet (sau `.xlsx`) cu dată = mâine
+- Trimitere WhatsApp + Email:
+  - „Reminder: Mâine la [Ora] ai programare la Magic Hub – locația [Locație].”
+- Dacă răspunde „Reprogramez” → adaugă în tab special „Pending Rebooking” din Sheet
+
+---
+
+🧠 3. Pre-filtru AI (pentru mesaje WhatsApp inițiale)
+- Trigger: webhook 360dialog (mesaj nou de la client)
+- Claude/GPT parsează mesajul → extrage:
+  - locația dorită (ex: „Vreau la Crângași”)
+  - serviciul (ex: „masaj”, „vopsit”, „epilat”)
+- Generează răspuns personalizat: „Super! Avem liber mâine la [Ora sugerată]. Confirmăm?”
+- Log interacțiune + scor în tab „Interactiv AI”
+
+---
+
+✅ 4. Follow-up după programare
+- Trigger: 2h după ora programată (din sheet/upload)
+- Condiție: status = „prezent” sau „completed”
+- Trimitere:
+  - WhatsApp: „Ne bucurăm că ai venit! Ne lași un review?” + [link Google Maps]
+  - Email: mesaj + link angajat dacă există
+- Log în „Recenzii trimise” + status click link dacă se poate urmări
+
+---
+
+🚫 5. No show / apel pierdut
+- Trigger: Status = „no show” sau „absent” în fișier uploadat zilnic (sau webhook)
+- Automat trimite mesaj:
+  - WhatsApp: „Am văzut că nu ai ajuns 😔 Te reprogramăm cu prioritate?”
+  - SMS fallback dacă WA eșuează
+- Log în tab „No Show” + marcaj pt follow-up uman
+
+---
+
+📉 6. Feedback negativ săptămânal (manual upload raport .xlsx)
+- Trigger: Upload fișier în Google Drive „Feedback Negativ”
+- Citire scoruri < 3 stele
+- Trimite email manager + mesaj draft reconectare generat de GPT:
+  - „Bună! Ne pare rău pentru experiență. Putem face ceva să îți redăm încrederea?”
+- Salvează răspunsuri în Sheet „Feedback_Repair”
+
+---
+
+🤖 7. Auto-răspuns recenzii Google Maps (AI)
+- Trigger: Google Business API detectează review nou
+- Dacă scor ≥ 4: GPT răspunde automat: „Îți mulțumim! Ne bucurăm că ți-a plăcut 💖”
+- Dacă scor < 4:
+  - Trimite managerului pe WhatsApp/Slack cu draft AI + buton de aprobare
+  - După aprobare → publică răspuns prin API
+
+---
+
+📊 8. Dashboard Google Sheets / Airtable
+- Toate acțiunile scriu în rânduri separate:
+  - nume, telefon, status acțiune, data, canal (WA/email), tip automatizare (ex: „reminder”, „no show”), confirmat: da/nu
+- Sheet-urile pot fi filtrate live după locație, status, client activ/inactiv, etc.
+
+---
+
+🧠 Funcții AI moderne:
+- Claude Instant sau GPT-4o pentru mesaje interactive
+- Sentiment analysis pe recenzii
+- NLP intent recognition pe întrebări WA
+
+---
+
+🛠 Noduri n8n recomandate:
+- `Google Sheets`, `Gmail`, `HTTP Request`, `If`, `Switch`, `Set`, `Google Drive`, `Cron`, `Webhook`, `OpenAI` sau `Claude`, `Twilio`, `Slack`
+- Opțional fallback SMS prin Twilio sau alt gateway dacă WA nu funcționează
+
+---
+
+🔐 Cerințe speciale:
+- Include fallback și retry pentru WhatsApp și Gmail
+- Include flow de testare cu dummy contact
+- Output: JSON complet compatibil cu n8n, clar, modular, descris
+
+---
+
+🧩 Export final:
+- Tip: `.json` pentru import direct în n8n
+- Modular: fiecare secțiune poate fi reimportată ca flow individual
+
