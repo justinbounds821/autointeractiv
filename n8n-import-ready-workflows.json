@@ -1,0 +1,400 @@
+{
+  "meta": {
+    "instanceId": "magic-hub-automation",
+    "exportVersion": "1.0.0"
+  },
+  "workflows": [
+    {
+      "id": "1",
+      "name": "Magic Hub - Booking Confirmation Workflow",
+      "active": false,
+      "createdAt": "2024-01-15T00:00:00.000Z",
+      "updatedAt": "2024-01-15T00:00:00.000Z",
+      "tags": [
+        {
+          "id": "1",
+          "name": "booking"
+        },
+        {
+          "id": "2", 
+          "name": "confirmation"
+        }
+      ],
+      "nodes": [
+        {
+          "parameters": {
+            "path": "magic-hub-booking-upload",
+            "responseMode": "responseNode",
+            "options": {}
+          },
+          "id": "01-webhook-booking-upload",
+          "name": "Webhook - Booking Upload",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [180, 300]
+        },
+        {
+          "parameters": {
+            "conditions": {
+              "options": {
+                "caseSensitive": true,
+                "leftValue": "",
+                "typeValidation": "strict"
+              },
+              "conditions": [
+                {
+                  "leftValue": "={{ $json.firstname }}",
+                  "rightValue": "",
+                  "operator": {
+                    "type": "string",
+                    "operation": "isNotEmpty"
+                  }
+                },
+                {
+                  "leftValue": "={{ $json.phone }}",
+                  "rightValue": "^\\+[1-9]\\d{1,14}$",
+                  "operator": {
+                    "type": "string",
+                    "operation": "regex"
+                  }
+                },
+                {
+                  "leftValue": "={{ $json.date }}",
+                  "rightValue": "",
+                  "operator": {
+                    "type": "string",
+                    "operation": "isNotEmpty"
+                  }
+                }
+              ],
+              "combinator": "and"
+            }
+          },
+          "id": "02-input-validator",
+          "name": "Input Validator",
+          "type": "n8n-nodes-base.if",
+          "typeVersion": 1,
+          "position": [350, 300]
+        },
+        {
+          "parameters": {
+            "url": "https://waba.360dialog.io/v1/messages",
+            "authentication": "none",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "D360-API-KEY",
+                  "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+                },
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "contentType": "json",
+            "body": "={\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Salut {{ $json.firstname }}! Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}. Confirmi cu 1️⃣ Da / 2️⃣ Reprogramez?\"\n  }\n}",
+            "options": {}
+          },
+          "id": "03-whatsapp-confirmation-fixed",
+          "name": "WhatsApp Confirmation (FIXED)",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [550, 200],
+          "onError": "continueErrorOutput"
+        },
+        {
+          "parameters": {
+            "fromEmail": "noreply@magichub.ro",
+            "toEmail": "={{ $json.email }}",
+            "subject": "Confirmare rezervare Magic Hub",
+            "emailFormat": "html",
+            "message": "<!DOCTYPE html><html><body><h2>Salut {{ $json.firstname }}!</h2><p>Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}.</p><p>Te rugăm să confirmi rezervarea răspunzând la acest email cu \"Confirm\" sau \"Reprogramez\".</p><p>Mulțumim!</p></body></html>"
+          },
+          "id": "04-email-confirmation",
+          "name": "Email Confirmation",
+          "type": "n8n-nodes-base.gmail",
+          "typeVersion": 2,
+          "position": [550, 400],
+          "onError": "continueErrorOutput"
+        },
+        {
+          "parameters": {
+            "operation": "append",
+            "documentId": {
+              "__rl": true,
+              "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+              "mode": "id"
+            },
+            "sheetName": "Booking_Confirmations",
+            "columns": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "name": "={{ $json.firstname }} {{ $json.lastname }}",
+                "phone": "={{ $json.phone }}",
+                "email": "={{ $json.email }}",
+                "booking_date": "={{ $json.date }}",
+                "booking_time": "={{ $json.time }}",
+                "location": "={{ $json.location }}",
+                "whatsapp_sent": "={{ $('WhatsApp Confirmation (FIXED)').item(0).json.status === 'success' }}",
+                "email_sent": "={{ $('Email Confirmation').item(0).json.status === 'success' }}",
+                "timestamp": "={{ new Date().toISOString() }}",
+                "status": "confirmation_sent"
+              }
+            },
+            "options": {}
+          },
+          "id": "05-log-confirmations",
+          "name": "Log Confirmations",
+          "type": "n8n-nodes-base.googleSheets",
+          "typeVersion": 4,
+          "position": [750, 300]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Booking confirmation processed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"whatsapp_sent\": {{ $('WhatsApp Confirmation (FIXED)').item(0).json.status === 'success' }},\n  \"email_sent\": {{ $('Email Confirmation').item(0).json.status === 'success' }}\n}"
+          },
+          "id": "06-response-node",
+          "name": "Response Node",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [950, 300]
+        }
+      ],
+      "connections": {
+        "Webhook - Booking Upload": {
+          "main": [
+            [
+              {
+                "node": "Input Validator",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Input Validator": {
+          "main": [
+            [
+              {
+                "node": "WhatsApp Confirmation (FIXED)",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "Email Confirmation",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "WhatsApp Confirmation (FIXED)": {
+          "main": [
+            [
+              {
+                "node": "Log Confirmations",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Email Confirmation": {
+          "main": [
+            [
+              {
+                "node": "Log Confirmations",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Log Confirmations": {
+          "main": [
+            [
+              {
+                "node": "Response Node",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "2",
+      "name": "Magic Hub - No Show Management Workflow",
+      "active": false,
+      "createdAt": "2024-01-15T00:00:00.000Z",
+      "updatedAt": "2024-01-15T00:00:00.000Z",
+      "tags": [
+        {
+          "id": "3",
+          "name": "no-show"
+        },
+        {
+          "id": "4",
+          "name": "recovery"
+        }
+      ],
+      "nodes": [
+        {
+          "parameters": {
+            "path": "no-show-webhook",
+            "responseMode": "responseNode",
+            "options": {}
+          },
+          "id": "01-webhook-no-show",
+          "name": "Webhook - No Show",
+          "type": "n8n-nodes-base.webhook",
+          "typeVersion": 1,
+          "position": [180, 300]
+        },
+        {
+          "parameters": {
+            "url": "https://waba.360dialog.io/v1/messages",
+            "authentication": "none",
+            "sendHeaders": true,
+            "headerParameters": {
+              "parameters": [
+                {
+                  "name": "D360-API-KEY",
+                  "value": "={{ $credentials.whatsapp360dialog.apiKey }}"
+                },
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            },
+            "sendBody": true,
+            "contentType": "json",
+            "body": "={\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Salut {{ $json.firstname }}! 😔 Am observat că nu ai putut veni la programarea de pe {{ $json.date }} la {{ $json.time }}. Magic Hub îți oferă o nouă programare gratuită! Răspunde cu DA pentru a te reprograma. 💫\"\n  }\n}",
+            "options": {}
+          },
+          "id": "02-whatsapp-recovery",
+          "name": "WhatsApp Recovery Message",
+          "type": "n8n-nodes-base.httpRequest",
+          "typeVersion": 4.1,
+          "position": [380, 200],
+          "onError": "continueErrorOutput"
+        },
+        {
+          "parameters": {
+            "resource": "sms",
+            "operation": "send",
+            "message": "Salut {{ $json.firstname }}! Nu ai putut veni la Magic Hub pe {{ $json.date }}? Te reprogramăm gratuit! Sună la {{ $vars.twilioNumber }}",
+            "to": "={{ $json.phone }}",
+            "from": "={{ $credentials.twilio.twilioNumber }}"
+          },
+          "id": "03-sms-fallback",
+          "name": "SMS Fallback",
+          "type": "n8n-nodes-base.twilio",
+          "typeVersion": 1,
+          "position": [380, 400],
+          "onError": "continueErrorOutput"
+        },
+        {
+          "parameters": {
+            "operation": "append",
+            "documentId": {
+              "__rl": true,
+              "value": "{{ $credentials.googleSheets.spreadsheetId }}",
+              "mode": "id"
+            },
+            "sheetName": "No_Show_Recovery",
+            "columns": {
+              "mappingMode": "defineBelow",
+              "value": {
+                "name": "={{ $json.firstname }} {{ $json.lastname }}",
+                "phone": "={{ $json.phone }}",
+                "missed_date": "={{ $json.date }}",
+                "missed_time": "={{ $json.time }}",
+                "whatsapp_sent": "={{ $('WhatsApp Recovery Message').item(0).json.status === 'success' }}",
+                "sms_sent": "={{ $('SMS Fallback').item(0).json.status === 'sent' }}",
+                "timestamp": "={{ new Date().toISOString() }}",
+                "status": "recovery_sent"
+              }
+            },
+            "options": {}
+          },
+          "id": "04-log-recovery",
+          "name": "Log Recovery Attempts",
+          "type": "n8n-nodes-base.googleSheets",
+          "typeVersion": 4,
+          "position": [580, 300]
+        },
+        {
+          "parameters": {
+            "respondWith": "json",
+            "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"No-show recovery messages sent\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"whatsapp_sent\": {{ $('WhatsApp Recovery Message').item(0).json.status === 'success' }},\n  \"sms_sent\": {{ $('SMS Fallback').item(0).json.status === 'sent' }}\n}"
+          },
+          "id": "05-response-node",
+          "name": "Response Node",
+          "type": "n8n-nodes-base.respondToWebhook",
+          "typeVersion": 1,
+          "position": [780, 300]
+        }
+      ],
+      "connections": {
+        "Webhook - No Show": {
+          "main": [
+            [
+              {
+                "node": "WhatsApp Recovery Message",
+                "type": "main",
+                "index": 0
+              },
+              {
+                "node": "SMS Fallback",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "WhatsApp Recovery Message": {
+          "main": [
+            [
+              {
+                "node": "Log Recovery Attempts",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "SMS Fallback": {
+          "main": [
+            [
+              {
+                "node": "Log Recovery Attempts",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Log Recovery Attempts": {
+          "main": [
+            [
+              {
+                "node": "Response Node",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "credentials": [],
+  "variables": []
+} 
