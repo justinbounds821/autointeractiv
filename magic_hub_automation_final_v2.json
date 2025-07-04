@@ -1,0 +1,710 @@
+{
+  "name": "Magic Hub Salon - Production Ready Workflow v2.0",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "magic-hub-booking-upload",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://magichub.ro"
+        }
+      },
+      "id": "webhook-booking-upload",
+      "name": "Webhook - Booking Upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 300]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "action_type",
+              "value": "booking_upload"
+            },
+            {
+              "name": "validation_status",
+              "value": "pending"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "set-initial-data",
+      "name": "Set Initial Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input validation and sanitization\nconst items = $input.all();\nconst validatedItems = [];\nconst errors = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Phone number validation\n  const phoneRegex = /^\\+?[1-9]\\d{1,14}$/;\n  if (!data.phone || !phoneRegex.test(data.phone.replace(/\\s/g, ''))) {\n    errors.push(`Invalid phone number: ${data.phone}`);\n    continue;\n  }\n  \n  // Email validation\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  if (!data.email || !emailRegex.test(data.email)) {\n    errors.push(`Invalid email: ${data.email}`);\n    continue;\n  }\n  \n  // Required fields validation\n  if (!data.firstname || !data.lastname || !data.date || !data.time) {\n    errors.push(`Missing required fields for ${data.phone}`);\n    continue;\n  }\n  \n  // Status validation\n  const validStatuses = ['new', 'pending', 'confirmed', 'completed', 'no show', 'cancelled'];\n  if (!validStatuses.includes(data.status)) {\n    errors.push(`Invalid status: ${data.status}`);\n    continue;\n  }\n  \n  // Sanitize and format data\n  validatedItems.push({\n    ...data,\n    phone: data.phone.replace(/\\s/g, ''),\n    email: data.email.toLowerCase(),\n    firstname: data.firstname.trim(),\n    lastname: data.lastname.trim(),\n    validation_status: 'valid',\n    processed_at: new Date().toISOString()\n  });\n}\n\nif (errors.length > 0) {\n  console.log('Validation errors:', errors);\n}\n\nreturn validatedItems;"
+      },
+      "id": "validate-input-data",
+      "name": "Validate Input Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "new",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "pending",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "filter-new-bookings",
+      "name": "Filter New Bookings",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": "Duplicate_Check",
+        "filters": {
+          "conditions": [
+            {
+              "column": "phone",
+              "condition": "equals",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "column": "booking_date",
+              "condition": "equals",
+              "value": "={{ $json.date }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-duplicates",
+      "name": "Check Duplicates",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [980, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "filter-non-duplicates",
+      "name": "Filter Non-Duplicates",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1180, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://waba.360dialog.io/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $vars.WHATSAPP_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Salut {{ $json.firstname }}! Ai rezervare la Magic Hub {{ $json.location }} pe {{ $json.date }} la {{ $json.time }}. Confirmi cu 1️⃣ Da / 2️⃣ Reprogramez?\"\n  }\n}",
+        "options": {
+          "timeout": 10000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3,
+            "retryDelay": 2000
+          }
+        }
+      },
+      "id": "whatsapp-confirmation",
+      "name": "WhatsApp Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1380, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $vars.SENDER_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "Confirmare rezervare Magic Hub - {{ $json.date }}",
+        "emailFormat": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; margin: 20px; }\n    .header { background-color: #f8f9fa; padding: 20px; border-radius: 8px; }\n    .content { margin: 20px 0; }\n    .button { background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h2>Salut {{ $json.firstname }}!</h2>\n  </div>\n  <div class=\"content\">\n    <p><strong>Ai rezervare la Magic Hub {{ $json.location }}</strong></p>\n    <p>📅 Data: {{ $json.date }}</p>\n    <p>🕐 Ora: {{ $json.time }}</p>\n    <p>📍 Locația: {{ $json.location }}</p>\n    \n    <p>Te rugăm să confirmi rezervarea:</p>\n    <a href=\"mailto:{{ $vars.SENDER_EMAIL }}?subject=Confirmare%20Rezervare&body=Confirm\" class=\"button\">CONFIRM</a>\n    <a href=\"mailto:{{ $vars.SENDER_EMAIL }}?subject=Reprogramare%20Rezervare&body=Reprogramez\" class=\"button\">REPROGRAMEZ</a>\n  </div>\n  <p>Mulțumim,<br>Echipa Magic Hub</p>\n</body>\n</html>",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxRetries": 3
+          }
+        }
+      },
+      "id": "email-confirmation",
+      "name": "Email Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1380, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "whatsapp_status",
+              "value": "={{ $('WhatsApp Confirmation').item.json.error ? 'failed' : 'sent' }}"
+            },
+            {
+              "name": "email_status",
+              "value": "={{ $('Email Confirmation').item.json.error ? 'failed' : 'sent' }}"
+            },
+            {
+              "name": "overall_status",
+              "value": "={{ ($('WhatsApp Confirmation').item.json.error && $('Email Confirmation').item.json.error) ? 'failed' : 'partial_success' }}"
+            }
+          ]
+        }
+      },
+      "id": "set-status-data",
+      "name": "Set Status Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": "Booking_Confirmations",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.firstname }} {{ $json.lastname }}",
+            "phone": "={{ $json.phone }}",
+            "email": "={{ $json.email }}",
+            "booking_date": "={{ $json.date }}",
+            "booking_time": "={{ $json.time }}",
+            "location": "={{ $json.location }}",
+            "whatsapp_sent": "={{ $json.whatsapp_status === 'sent' }}",
+            "email_sent": "={{ $json.email_status === 'sent' }}",
+            "timestamp": "={{ new Date().toISOString() }}",
+            "status": "confirmation_sent",
+            "response": "",
+            "unique_id": "={{ $json.phone }}_{{ $json.date }}_{{ $json.time }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-confirmations",
+      "name": "Log Confirmations",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-daily-reminders",
+      "name": "Cron - Daily Reminders",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [180, 600]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEETS_ID }}",
+          "mode": "id"
+        },
+        "sheetName": "Booking_Confirmations",
+        "options": {}
+      },
+      "id": "read-bookings",
+      "name": "Read Bookings",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [380, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced date filtering with timezone support\nconst items = $input.all();\nconst now = new Date();\nconst timezone = 'Europe/Bucharest';\n\n// Get tomorrow's date in Romanian timezone\nconst tomorrow = new Date(now.toLocaleString('en-US', { timeZone: timezone }));\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst tomorrowDate = tomorrow.toISOString().split('T')[0];\n\nconst filteredBookings = items.filter(item => {\n  try {\n    const bookingDate = new Date(item.json.booking_date).toISOString().split('T')[0];\n    const isMatchingDate = bookingDate === tomorrowDate;\n    const notAlreadyReminded = !item.json.reminder_sent;\n    \n    return isMatchingDate && notAlreadyReminded;\n  } catch (error) {\n    console.error('Date parsing error:', error, item.json.booking_date);\n    return false;\n  }\n});\n\nconsole.log(`Found ${filteredBookings.length} bookings for tomorrow (${tomorrowDate})`);\nreturn filteredBookings;"
+      },
+      "id": "filter-tomorrow-bookings",
+      "name": "Filter Tomorrow Bookings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [580, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "check-reminders-exist",
+      "name": "Check Reminders Exist",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [780, 600]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "batch-reminders",
+      "name": "Batch Reminders",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [980, 600]
+    },
+    {
+      "parameters": {
+        "path": "whatsapp-message-received",
+        "responseMode": "responseNode",
+        "options": {
+          "noResponseBody": false
+        }
+      },
+      "id": "webhook-whatsapp-received",
+      "name": "Webhook - WhatsApp Received",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [180, 1000]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced message parsing and validation\nconst item = $input.all()[0];\nconst data = item.json;\n\n// Extract message data based on 360Dialog webhook format\nlet messageData = {};\n\ntry {\n  if (data.messages && data.messages[0]) {\n    const message = data.messages[0];\n    messageData = {\n      phone: message.from,\n      text: message.text?.body || '',\n      timestamp: message.timestamp,\n      message_id: message.id,\n      type: message.type\n    };\n  } else {\n    throw new Error('Invalid message format');\n  }\n  \n  // Basic spam/abuse detection\n  const spamIndicators = ['http://', 'https://', 'bit.ly', 'promo', 'oferta'];\n  const isSpam = spamIndicators.some(indicator => \n    messageData.text.toLowerCase().includes(indicator)\n  );\n  \n  if (isSpam) {\n    messageData.is_spam = true;\n    console.log('Potential spam detected:', messageData.text);\n  }\n  \n  // Rate limiting check\n  messageData.processing_timestamp = new Date().toISOString();\n  \n  return [messageData];\n  \n} catch (error) {\n  console.error('Message parsing error:', error);\n  return [{\n    error: 'Invalid message format',\n    raw_data: data,\n    timestamp: new Date().toISOString()\n  }];\n}"
+      },
+      "id": "parse-whatsapp-message",
+      "name": "Parse WhatsApp Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [380, 1000]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isEmpty"
+              }
+            },
+            {
+              "leftValue": "={{ $json.is_spam }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "filter-valid-messages",
+      "name": "Filter Valid Messages",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [580, 1000]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "Analyze this WhatsApp message from a Magic Hub salon client and extract information. Respond ONLY with valid JSON.\n\nMessage: \"{{ $json.text }}\"\nPhone: {{ $json.phone }}\n\nExtract:\n- location: Any mentioned location (Crângași, Centru, etc.) or empty string\n- service: Any mentioned service (masaj, vopsit, epilat, etc.) or empty string  \n- intent: booking|confirmation|cancellation|question|complaint|other\n- sentiment: positive|neutral|negative\n- response: A professional, warm response in Romanian (max 160 chars)\n\nJSON format:\n{\n  \"location\": \"\",\n  \"service\": \"\", \n  \"intent\": \"\",\n  \"sentiment\": \"\",\n  \"response\": \"\"\n}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "ai-message-analysis",
+      "name": "AI Message Analysis",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [780, 1000],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate AI response\nconst item = $input.all()[0];\nlet aiResponse;\n\ntry {\n  // Try to parse the AI response as JSON\n  const responseText = item.json.choices?.[0]?.message?.content || item.json.response || '';\n  aiResponse = JSON.parse(responseText);\n  \n  // Validate required fields\n  const requiredFields = ['location', 'service', 'intent', 'sentiment', 'response'];\n  const missingFields = requiredFields.filter(field => !(field in aiResponse));\n  \n  if (missingFields.length > 0) {\n    throw new Error(`Missing fields: ${missingFields.join(', ')}`);\n  }\n  \n  // Add metadata\n  aiResponse.ai_processing_success = true;\n  aiResponse.processed_at = new Date().toISOString();\n  \n} catch (error) {\n  console.error('AI response parsing error:', error);\n  \n  // Fallback response\n  aiResponse = {\n    location: '',\n    service: '',\n    intent: 'question',\n    sentiment: 'neutral',\n    response: 'Mulțumim pentru mesaj! Un consultant vă va răspunde în scurt timp.',\n    ai_processing_success: false,\n    error: error.message,\n    processed_at: new Date().toISOString()\n  };\n}\n\nreturn [{\n  ...item.json,\n  ai_analysis: aiResponse\n}];"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 1000]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"Magic Hub automation workflow completed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"execution_id\": \"{{ $execution.id }}\",\n  \"processed_items\": {{ $json.length || 1 }}\n}"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1800, 800]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseStatusCode": 400,
+        "responseBody": "{\n  \"status\": \"error\",\n  \"message\": \"{{ $json.error || 'Workflow execution failed' }}\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"execution_id\": \"{{ $execution.id }}\"\n}"
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1800, 1000]
+    }
+  ],
+  "connections": {
+    "Webhook - Booking Upload": {
+      "main": [
+        [
+          {
+            "node": "Set Initial Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Initial Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input Data": {
+      "main": [
+        [
+          {
+            "node": "Filter New Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Bookings": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Filter Non-Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Non-Duplicates": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Confirmation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Set Status Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Set Status Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status Data": {
+      "main": [
+        [
+          {
+            "node": "Log Confirmations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Confirmations": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron - Daily Reminders": {
+      "main": [
+        [
+          {
+            "node": "Read Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Bookings": {
+      "main": [
+        [
+          {
+            "node": "Filter Tomorrow Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Tomorrow Bookings": {
+      "main": [
+        [
+          {
+            "node": "Check Reminders Exist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Reminders Exist": {
+      "main": [
+        [
+          {
+            "node": "Batch Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - WhatsApp Received": {
+      "main": [
+        [
+          {
+            "node": "Parse WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Messages": {
+      "main": [
+        [
+          {
+            "node": "AI Message Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Message Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler-workflow-id"
+  },
+  "staticData": {
+    "node:Cron - Daily Reminders": {
+      "lastExecution": null
+    }
+  },
+  "tags": [
+    {
+      "id": "production",
+      "name": "Production"
+    },
+    {
+      "id": "magic-hub",
+      "name": "Magic Hub"
+    }
+  ],
+  "triggerCount": 3,
+  "updatedAt": "2024-12-28T12:00:00.000Z",
+  "versionId": "2.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
